@@ -1,0 +1,370 @@
+"use client";
+
+import { useState } from "react";
+
+interface Transaction {
+    id: string;
+    protocol: string;
+    timestamp: string;
+    status: string;
+}
+
+interface AuditResult {
+    kyc: boolean | null;
+    aml: boolean | null;
+    yield: boolean | null;
+}
+
+export default function AuditorDashboard() {
+    const [authenticated, setAuthenticated] = useState(false);
+    const [email, setEmail] = useState("");
+    const [selectedTx, setSelectedTx] = useState<string | null>(null);
+    const [auditResults, setAuditResults] = useState<AuditResult>({ kyc: null, aml: null, yield: null });
+    const [loading, setLoading] = useState(false);
+    const [showMetadata, setShowMetadata] = useState(true);
+
+    // State for logs and transaction hash
+    const [proofLogs, setProofLogs] = useState<string[]>([]);
+    const [txHash, setTxHash] = useState<string | null>(null);
+
+    // REAL blockchain transactions
+    const [transactions, setTransactions] = useState<Transaction[]>([]);
+    const [loadingTxs, setLoadingTxs] = useState(false);
+
+    // Fetch real transactions from blockchain
+    const fetchTransactions = async () => {
+        setLoadingTxs(true);
+        try {
+            const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3000'}/api/transaction`);
+            const data = await response.json();
+
+            if (data.success && data.transactions) {
+                setTransactions(data.transactions.map((tx: any) => ({
+                    id: tx.id,
+                    protocol: tx.protocol === '0x0000000000000000000000000000000000000000' ? 'Private Protocol' : tx.protocol,
+                    timestamp: tx.timestamp,
+                    status: 'Pending' // Would check audit status in production
+                })));
+            }
+        } catch (error) {
+            console.error('Failed to fetch transactions:', error);
+            setTransactions([]);
+        } finally {
+            setLoadingTxs(false);
+        }
+    };
+
+    const login = () => {
+        if (email) {
+            setAuthenticated(true);
+            fetchTransactions(); // Fetch real transactions on login
+        }
+    };
+
+    const verifyAudit = async (type: 'kyc' | 'aml' | 'yield') => {
+        if (!selectedTx) return;
+        setLoading(true);
+        setProofLogs([]); // Clear previous logs
+        setTxHash(null);
+
+        try {
+            // Add initial log
+            setProofLogs(prev => [...prev, `[UI] Requesting ${type.toUpperCase()} audit for ${selectedTx}...`]);
+
+            // Call Backend API
+            // Note: In a real app we'd fetch the specific transaction details first
+            // For this demo, we use the selectedTx ID
+            const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3000'}/api/proof/generate/${type}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    txId: selectedTx,
+                    // Pass mock inputs for demo if backend requires them, or backend fetches them
+                    // Since backend has mock inputs in proof-service, just passing ID is enough for now
+                    inputs: {
+                        userAddress: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266", // Demo User
+                        root: "123456789" // Demo public input
+                    }
+                })
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.error || "Verification failed");
+            }
+
+            // Update Logs from Backend
+            if (data.logs) {
+                setProofLogs(prev => [...prev, ...data.logs]);
+            }
+
+            if (data.txHash) {
+                setTxHash(data.txHash);
+                setProofLogs(prev => [...prev, `[CHAIN] Transaction confirmed: ${data.txHash}`]);
+            }
+
+            setAuditResults(prev => ({ ...prev, [type]: true }));
+            setProofLogs(prev => [...prev, `[SUCCESS] ${type.toUpperCase()} Verified On-Chain!`]);
+
+        } catch (error: any) {
+            console.error(error);
+            setAuditResults(prev => ({ ...prev, [type]: false }));
+            setProofLogs(prev => [...prev, `[ERROR] Verification Failed: ${error.message}`]);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    if (!authenticated) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100">
+                <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full">
+                    <h1 className="text-3xl font-bold text-gray-900 mb-6">Auditor Login</h1>
+                    <div className="space-y-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
+                            <input
+                                type="email"
+                                value={email}
+                                onChange={(e) => setEmail(e.target.value)}
+                                className="w-full px-4 py-2 border rounded-lg"
+                                placeholder="auditor@regulator.gov"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Password</label>
+                            <input
+                                type="password"
+                                className="w-full px-4 py-2 border rounded-lg"
+                                placeholder="••••••••"
+                            />
+                        </div>
+                        <button
+                            onClick={login}
+                            className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-lg font-semibold hover:shadow-lg transition-all"
+                        >
+                            Login as Auditor
+                        </button>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-4">Demo mode - any email will work</p>
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="container mx-auto px-6 py-12">
+            <div className="max-w-6xl mx-auto">
+                <div className="flex justify-between items-center mb-8">
+                    <h1 className="text-4xl font-bold text-gray-900">Auditor Dashboard</h1>
+                    <div className="text-sm text-gray-600">
+                        Logged in as: <span className="font-semibold">{email}</span>
+                    </div>
+                </div>
+
+                {/* Audit Requests */}
+                <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
+                    <h2 className="text-xl font-bold mb-4">📋 Audit Requests</h2>
+                    <div className="overflow-x-auto">
+                        <table className="w-full">
+                            <thead className="bg-gray-50">
+                                <tr>
+                                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">TX ID</th>
+                                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Protocol</th>
+                                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Time</th>
+                                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Status</th>
+                                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-200">
+                                {loadingTxs ? (
+                                    <tr>
+                                        <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
+                                            <div className="animate-pulse">Loading transactions from blockchain...</div>
+                                        </td>
+                                    </tr>
+                                ) : transactions.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
+                                            No transactions found. Create a transaction in User Dashboard.
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    transactions.map((tx) => (
+                                        <tr key={tx.id} className="hover:bg-gray-50">
+                                            <td className="px-4 py-3 font-mono text-sm">{tx.id}</td>
+                                            <td className="px-4 py-3 text-sm">{tx.protocol}</td>
+                                            <td className="px-4 py-3 text-sm text-gray-600">{tx.timestamp}</td>
+                                            <td className="px-4 py-3">
+                                                <span className={`px-2 py-1 rounded-full text-xs font-semibold ${tx.status === 'Verified' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                                                    }`}>
+                                                    {tx.status}
+                                                </span>
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <button
+                                                    onClick={() => setSelectedTx(tx.id)}
+                                                    className="text-indigo-600 hover:text-indigo-800 font-semibold text-sm"
+                                                >
+                                                    Audit →
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            {/* Audit Result View */}
+            {selectedTx && (
+                <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
+                    <div className="flex justify-between items-center mb-6">
+                        <h2 className="text-xl font-bold">🔍 Audit Results for {selectedTx}</h2>
+                        <div className="flex gap-4 items-center">
+                            <label className="flex items-center gap-2 text-sm">
+                                <input
+                                    type="checkbox"
+                                    checked={showMetadata}
+                                    onChange={(e) => setShowMetadata(e.target.checked)}
+                                    className="rounded"
+                                />
+                                Show allowed metadata
+                            </label>
+                        </div>
+                    </div>
+
+                    {/* Verification Buttons */}
+                    <div className="grid grid-cols-3 gap-4 mb-6">
+                        <button
+                            onClick={() => verifyAudit('kyc')}
+                            disabled={loading}
+                            className="bg-blue-600 text-white px-4 py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50"
+                        >
+                            Verify KYC
+                        </button>
+                        <button
+                            onClick={() => verifyAudit('aml')}
+                            disabled={loading}
+                            className="bg-purple-600 text-white px-4 py-3 rounded-lg font-semibold hover:bg-purple-700 transition-colors disabled:opacity-50"
+                        >
+                            Verify AML
+                        </button>
+                        <button
+                            onClick={() => verifyAudit('yield')}
+                            disabled={loading}
+                            className="bg-green-600 text-white px-4 py-3 rounded-lg font-semibold hover:bg-green-700 transition-colors disabled:opacity-50"
+                        >
+                            Verify Yield
+                        </button>
+                    </div>
+
+                    {/* Results Display */}
+                    <div className="space-y-4">
+                        {auditResults.kyc !== null && (
+                            <div className={`p-4 rounded-lg ${auditResults.kyc ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
+                                <div className="flex items-center gap-2">
+                                    {auditResults.kyc ? '✅' : '❌'}
+                                    <span className={`font-semibold ${auditResults.kyc ? 'text-green-800' : 'text-red-800'}`}>
+                                        KYC {auditResults.kyc ? 'Verified' : 'Failed'}
+                                    </span>
+                                </div>
+                            </div>
+                        )}
+                        {auditResults.aml !== null && (
+                            <div className={`p-4 rounded-lg ${auditResults.aml ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
+                                <div className="flex items-center gap-2">
+                                    {auditResults.aml ? '✅' : '❌'}
+                                    <span className={`font-semibold ${auditResults.aml ? 'text-green-800' : 'text-red-800'}`}>
+                                        AML {auditResults.aml ? 'Clean' : 'Failed: Sanctioned address detected'}
+                                    </span>
+                                </div>
+                                {!auditResults.aml && (
+                                    <p className="text-xs text-red-600 mt-2">Privacy doesn't mean immunity</p>
+                                )}
+                            </div>
+                        )}
+                        {auditResults.yield !== null && (
+                            <div className={`p-4 rounded-lg ${auditResults.yield ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
+                                <div className="flex items-center gap-2">
+                                    {auditResults.yield ? '✅' : '❌'}
+                                    <span className={`font-semibold ${auditResults.yield ? 'text-green-800' : 'text-red-800'}`}>
+                                        Yield Rule {auditResults.yield ? 'Satisfied' : 'Failed'}
+                                    </span>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Metadata Display */}
+                    {showMetadata && (
+                        <div className="mt-6 bg-gray-50 rounded-lg p-4">
+                            <h3 className="font-semibold text-gray-700 mb-3">Allowed Metadata</h3>
+                            <div className="space-y-2 text-sm">
+                                <div><span className="text-gray-600">Transaction ID:</span> <span className="font-mono">{selectedTx}</span></div>
+                                <div><span className="text-gray-600">Protocol:</span> Bond Protocol</div>
+                                <div><span className="text-gray-600">Timestamp:</span> 2 hours ago</div>
+                                <div><span className="text-gray-600">Proof Hash:</span> <span className="font-mono">0x9876...</span></div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* What's Hidden */}
+                    <div className="mt-4 bg-gray-900 text-white rounded-lg p-4">
+                        <h3 className="font-semibold mb-2">❌ Never Visible (Privacy Preserved)</h3>
+                        <ul className="text-sm space-y-1">
+                            <li>• Amounts</li>
+                            <li>• Recipient addresses</li>
+                            <li>• User balances</li>
+                            <li>• Wallet identities</li>
+                        </ul>
+                    </div>
+                    {/* Real-Time Proof Logs (Terminal Style) */}
+                    <div className="mt-6 bg-black rounded-lg p-4 font-mono text-xs overflow-hidden">
+                        <div className="flex justify-between items-center mb-2 border-b border-gray-700 pb-2">
+                            <span className="text-green-400">root@mantle-audit:~# verify-proof</span>
+                            {loading && <span className="text-yellow-400 animate-pulse">EXECUTING...</span>}
+                        </div>
+                        <div className="h-48 overflow-y-auto space-y-1 text-gray-300">
+                            {proofLogs.length === 0 ? (
+                                <span className="text-gray-600 italic">Waiting for verification request...</span>
+                            ) : (
+                                proofLogs.map((log, i) => (
+                                    <div key={i} className="break-all">
+                                        <span className="text-green-500">➜</span> {log}
+                                    </div>
+                                ))
+                            )}
+                            {txHash && (
+                                <div className="mt-2 text-blue-400">
+                                    <a href={`https://explorer.sepolia.mantle.xyz/tx/${txHash}`} target="_blank" rel="noreferrer" className="hover:underline">
+                                        View on Mantle Explorer ↗
+                                    </a>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Cost Metrics */}
+            <div className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl shadow-lg p-6">
+                <h3 className="text-lg font-bold mb-4">💰 Cost Comparison</h3>
+                <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <div className="text-3xl font-bold">$87</div>
+                        <div className="text-sm opacity-90">Per audit on Ethereum L1</div>
+                    </div>
+                    <div>
+                        <div className="text-3xl font-bold text-green-300">$0.03</div>
+                        <div className="text-sm opacity-90">Per audit on Mantle</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        </div >
+    );
+}

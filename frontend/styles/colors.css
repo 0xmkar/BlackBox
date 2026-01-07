@@ -1,0 +1,30 @@
+/* MantleAudit Design System - Color Variables */
+
+:root {
+    /* Backgrounds - Dark, professional */
+    --bg-primary: #0B0E11;
+    --bg-surface: #12161C;
+    --bg-card: #161B22;
+
+    /* Accent - Mantle Mint (ONLY ONE) */
+    --accent-mint: #6ED6C9;
+    --accent-mint-hover: #5AC2B5;
+
+    /* Text hierarchy */
+    --text-primary: #E6EDF3;
+    --text-secondary: #9BA4AE;
+    --text-muted: #6B7280;
+
+    /* Status colors */
+    --success: #22C55E;
+    --warning: #F59E0B;
+    --error: #EF4444;
+
+    /* Borders - Very subtle */
+    --border-subtle: rgba(255, 255, 255, 0.06);
+    --divider: rgba(255, 255, 255, 0.04);
+
+    /* Layout constants */
+    --sidebar-width: 64px;
+    --topnav-height: 64px;
+}

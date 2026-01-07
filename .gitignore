@@ -1,0 +1,28 @@
+node_modules/
+.env
+cache/
+artifacts/
+coverage/
+typechain-types/
+dist/
+build/
+
+# Hardhat files
+cache
+artifacts
+
+# IDEs
+.idea
+.vscode
+*.swp
+*.swo
+*~
+
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
