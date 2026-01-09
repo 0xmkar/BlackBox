@@ -1,0 +1,285 @@
+# ZK Vault User Flow Guide
+
+## System Overview
+
+The ZK Vault is a **privacy-preserving institutional vault** where:
+- **Users** deposit funds and receive proportional vault shares
+- **Curators** execute swaps on behalf of the vault (but cannot withdraw funds)
+- **All operations** require ZK proof verification for compliance
+- **Swaps are public** on FusionX DEX, but **strategy intent remains private**
+
+---
+
+## User Roles
+
+### 1. **Regular User (Depositor)**
+- Generates compliance proofs (KYC/AML)
+- Deposits tokens to vault → receives shares
+- Withdraws tokens by redeeming shares
+- Cannot execute swaps
+
+### 2. **Curator (Vault Manager)**
+- Executes swaps with ZK proof verification
+- Requires full compliance (KYC + AML + Yield proofs)
+- **CANNOT withdraw user funds** (enforced on-chain)
+- Strategy intent remains private
+
+---
+
+## Complete User Flow
+
+### **Step 1: Generate Compliance Proofs** (User Dashboard)
+
+**Page:** `/user` (User Dashboard in sidebar)
+
+1. **Connect Wallet**
+   - Click "Connect Wallet" button
+   - Approve MetaMask connection
+
+2. **Submit Transaction**
+   - Enter transaction details (optional for demo)
+   - Click "Submit Transaction"
+   - This generates a unique [TxId](file:///Users/stev3raj/Documents/main/crypto/MantleAudit/backend/services/contract-service.js#194-203) (transaction identifier)
+   - **Save this TxId** - you'll need it for deposits!
+
+3. **Generate KYC Proof**
+   - Click "Generate KYC Proof"
+   - Sign the message in MetaMask
+   - Wait 2-5 seconds for ZK proof generation
+   - Proof is submitted to blockchain
+   - ✅ KYC status shows "Passed"
+
+4. **Generate AML Proof**
+   - Click "Generate AML Proof"
+   - Sign the message in MetaMask
+   - Wait 2-5 seconds for ZK proof generation
+   - Proof is submitted to blockchain
+   - ✅ AML status shows "Passed"
+
+5. **Generate Yield Proof** (Optional for deposits, required for curator swaps)
+   - Click "Generate Yield Proof"
+   - Sign the message in MetaMask
+   - Wait 2-5 seconds for ZK proof generation
+   - ✅ Yield status shows "Passed"
+
+**Result:** You now have a [TxId](file:///Users/stev3raj/Documents/main/crypto/MantleAudit/backend/services/contract-service.js#194-203) with valid compliance proofs!
+
+---
+
+### **Step 2: Deposit to Vault** (Vault Deposits Page)
+
+**Page:** `/deposit` (Vault Deposits in sidebar)
+
+1. **Navigate to Vault Deposits**
+   - Click "Vault Deposits" in sidebar (Coins icon)
+
+2. **View Your Current Position**
+   - See your current shares (if any)
+   - View your share percentage of total vault
+   - Check your token value based on shares
+   - View total vault AUM
+
+3. **Deposit Tokens**
+   - Enter amount to deposit (in wei)
+   - Paste your [TxId](file:///Users/stev3raj/Documents/main/crypto/MantleAudit/backend/services/contract-service.js#194-203) from Step 1 (Compliance TxId field)
+   - Click "Deposit & Receive Shares"
+   - Approve token spending in MetaMask (if first time)
+   - Confirm transaction in MetaMask
+   - Wait for confirmation
+
+4. **Receive Vault Shares**
+   - **First depositor:** Receives 1:1 shares (1000 wei = 1000 shares)
+   - **Subsequent depositors:** Shares = [(depositAmount * totalShares) / totalAUM](file:///Users/stev3raj/Documents/main/crypto/MantleAudit/frontend/components/layout/Sidebar.tsx#18-64)
+   - Your share percentage updates automatically
+   - Token value shows your proportional ownership
+
+**Example:**
+- Vault has 10,000 AUM and 10,000 total shares
+- You deposit 1,000 tokens
+- You receive: [(1,000 * 10,000) / 10,000 = 1,000 shares](file:///Users/stev3raj/Documents/main/crypto/MantleAudit/frontend/components/layout/Sidebar.tsx#18-64)
+- Your ownership: `1,000 / 11,000 = 9.09%`
+
+---
+
+### **Step 3: Curator Executes Swap** (Curator Dashboard)
+
+**Page:** `/curator` (Curator Dashboard in sidebar)
+
+**Who can do this:** Only the vault curator (specific wallet address)
+
+1. **Navigate to Curator Dashboard**
+   - Click "Curator Dashboard" in sidebar (Vault icon)
+   - If you're not the curator, you'll see an authorization warning
+
+2. **View Vault Status**
+   - Total AUM (Assets Under Management)
+   - Vault status (Active/Paused)
+   - Latest PAC (Private Activity Commitment)
+
+3. **Prepare Compliance Proofs**
+   - Go to User Dashboard (`/user`)
+   - Generate KYC, AML, **and Yield** proofs
+   - Copy your [TxId](file:///Users/stev3raj/Documents/main/crypto/MantleAudit/backend/services/contract-service.js#194-203) (must have all 3 proofs!)
+
+4. **Execute Private Swap**
+   - Enter **Token In** address (token to swap from)
+   - Enter **Token Out** address (token to swap to)
+   - Enter **Amount** to swap
+   - Paste **Compliance TxId** (with all 3 proofs)
+   - Click "Execute Swap with ZK Verification"
+
+5. **ZK Verification Process**
+   - System verifies all compliance proofs on-chain
+   - Generates PAC (Private Activity Commitment)
+   - Executes swap on FusionX DEX
+   - Updates vault AUM
+   - Records PAC on-chain
+
+6. **Result**
+   - Swap is **PUBLIC** on FusionX (visible on block explorer)
+   - Strategy intent is **PRIVATE** (why you swapped, what's next)
+   - Vault AUM updates
+   - All user shares automatically increase in value (if profitable swap)
+
+**Privacy Model:**
+- ✅ **Public:** Individual swap transactions, token addresses, amounts
+- 🔒 **Private:** Why you swapped, portfolio strategy, next moves, compliance reasoning
+
+---
+
+### **Step 4: Withdraw from Vault** (Vault Deposits Page)
+
+**Page:** `/deposit` (Vault Deposits in sidebar)
+
+1. **Check Your Shares**
+   - View your current shares
+   - See estimated token value
+
+2. **Redeem Shares**
+   - Enter number of shares to redeem
+   - System shows estimated token amount you'll receive
+   - Token amount = [(shareAmount * totalAUM) / totalShares](file:///Users/stev3raj/Documents/main/crypto/MantleAudit/frontend/components/layout/Sidebar.tsx#18-64)
+   - Click "Withdraw Tokens"
+   - Confirm transaction in MetaMask
+
+3. **Receive Tokens**
+   - Shares are burned
+   - Proportional token amount sent to your wallet
+   - Your ownership percentage updates
+
+**Example:**
+- You have 1,000 shares
+- Total vault: 11,000 shares, 12,000 AUM (grew from profitable swaps!)
+- You redeem 500 shares
+- You receive: [(500 * 12,000) / 11,000 = 545.45 tokens](file:///Users/stev3raj/Documents/main/crypto/MantleAudit/frontend/components/layout/Sidebar.tsx#18-64)
+- You profited from curator's successful swaps! 🎉
+
+**Important:** Curator CANNOT withdraw - only depositors can redeem shares
+
+---
+
+## Navigation Summary
+
+| Page | Sidebar Icon | Purpose |
+|------|-------------|---------|
+| **User Dashboard** (`/user`) | FileText | Generate KYC/AML/Yield proofs, get TxId |
+| **Curator Dashboard** (`/curator`) | Vault | Execute swaps with ZK verification (curator only) |
+| **Vault Deposits** (`/deposit`) | Coins | Deposit funds, withdraw shares, track position |
+| **Dashboard** (`/`) | LayoutDashboard | Main vault overview |
+| **Auditor** (`/auditor`) | Search | Verify compliance proofs (auditor role) |
+
+---
+
+## Quick Start Checklist
+
+### For Users (Depositors):
+- [ ] Connect wallet on User Dashboard
+- [ ] Submit transaction to get TxId
+- [ ] Generate KYC proof
+- [ ] Generate AML proof
+- [ ] Go to Vault Deposits page
+- [ ] Deposit tokens with TxId
+- [ ] Receive vault shares
+- [ ] Track your position as curator executes swaps
+- [ ] Withdraw anytime by redeeming shares
+
+### For Curators:
+- [ ] Connect wallet on User Dashboard
+- [ ] Generate KYC, AML, **and Yield** proofs
+- [ ] Copy TxId (must have all 3 proofs)
+- [ ] Go to Curator Dashboard
+- [ ] Verify you're authorized (wallet = curator address)
+- [ ] Enter swap details (tokenIn, tokenOut, amount)
+- [ ] Paste compliance TxId
+- [ ] Execute swap with ZK verification
+- [ ] View updated AUM and PAC
+
+---
+
+## Key Concepts
+
+### **Shares vs Tokens**
+- **Shares** = Your proportional ownership of the vault
+- **Token Value** = [(yourShares / totalShares) * totalAUM](file:///Users/stev3raj/Documents/main/crypto/MantleAudit/frontend/components/layout/Sidebar.tsx#18-64)
+- As vault AUM grows (from profitable swaps), your token value increases
+- You can withdraw your proportional share anytime
+
+### **Compliance TxId**
+- Unique identifier for your compliance proofs
+- Generated when you submit transaction on User Dashboard
+- Must have valid KYC + AML for deposits
+- Must have valid KYC + AML + Yield for swaps
+- Stored on-chain for verification
+
+### **PAC (Private Activity Commitment)**
+- Cryptographic commitment to private swap activity
+- Proves compliance without revealing strategy
+- Recorded on-chain after each swap
+- Enables audit trail while preserving privacy
+
+### **Privacy Model**
+- **What's Public:** Swap transactions on FusionX, token movements, AUM changes
+- **What's Private:** Strategy reasoning, portfolio context, next moves, compliance details
+
+---
+
+## Common Questions
+
+**Q: Can the curator steal my funds?**
+A: No! The curator can only execute swaps. Withdrawal is blocked for curators on-chain. Only depositors can redeem their shares.
+
+**Q: How do I know if my deposit was successful?**
+A: Check the "Your Shares" card on Vault Deposits page. It will show your shares and percentage.
+
+**Q: What if I don't have compliance proofs?**
+A: You'll see a warning banner. Go to User Dashboard (`/user`) and generate KYC/AML proofs first.
+
+**Q: Can I withdraw immediately after depositing?**
+A: Yes! You can redeem your shares anytime. You'll receive a proportional amount based on current AUM.
+
+**Q: How do I profit from curator's swaps?**
+A: When the curator executes profitable swaps, the vault AUM increases. Your shares represent a fixed percentage, so your token value automatically increases.
+
+**Q: What happens if a swap loses money?**
+A: The vault AUM decreases, and all shareholders lose proportionally. This is why curator selection is important.
+
+---
+
+## Technical Notes
+
+- **Blockchain:** Mantle Sepolia Testnet
+- **DEX:** FusionX V3 (Uniswap V3 compatible)
+- **ZK Proofs:** Generated client-side, verified on-chain
+- **Proof Time:** 2-5 seconds per proof
+- **Gas Costs:** ~$0.03 per proof on Mantle (vs $87 on Ethereum L1)
+
+---
+
+## Support
+
+If you encounter issues:
+1. Check that your wallet is connected
+2. Verify you have compliance proofs (User Dashboard)
+3. Ensure you're using the correct TxId
+4. Check transaction status on Mantle Sepolia explorer
+5. Review browser console for error messages

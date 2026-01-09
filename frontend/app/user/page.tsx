@@ -12,7 +12,7 @@ import { useWalletStatus, useTransactionSignature, useProofSignature } from '../
 import { ConnectButton } from '../../components/wallet/ConnectButton';
 
 export default function UserDashboard() {
-    const { address, isConnected } = useWalletStatus();
+    const { address, isConnected, isCorrectNetwork, switchToMantleSepolia } = useWalletStatus();
     const { signTransaction } = useTransactionSignature();
     const { signProof } = useProofSignature();
 
@@ -31,6 +31,16 @@ export default function UserDashboard() {
         if (!isConnected || !address) {
             alert('Please connect your wallet first');
             return;
+        }
+
+        // Check and switch network if needed
+        if (!isCorrectNetwork) {
+            try {
+                await switchToMantleSepolia();
+            } catch (error) {
+                alert('Please switch to Mantle Sepolia network in your wallet');
+                return;
+            }
         }
 
         setIsSubmitting(true);
@@ -167,6 +177,28 @@ export default function UserDashboard() {
                                     </div>
                                 </div>
                                 <ConnectButton />
+                            </div>
+                        </Card>
+                    )}
+
+                    {/* Network Warning Banner */}
+                    {isConnected && !isCorrectNetwork && (
+                        <Card className="bg-[#EF4444]/10 border-[#EF4444]/20">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <AlertCircle className="w-5 h-5 text-[#EF4444]" />
+                                    <div>
+                                        <p className="text-sm font-medium text-[#E6EDF3]">Wrong Network</p>
+                                        <p className="text-xs text-[#9BA4AE]">Please switch to Mantle Sepolia network</p>
+                                    </div>
+                                </div>
+                                <Button
+                                    variant="secondary"
+                                    size="sm"
+                                    onClick={switchToMantleSepolia}
+                                >
+                                    Switch Network
+                                </Button>
                             </div>
                         </Card>
                     )}

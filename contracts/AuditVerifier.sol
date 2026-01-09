@@ -194,4 +194,68 @@ contract AuditVerifier {
 
         emit AuditCompleted(txId, auditType, passed, msg.sender, block.timestamp);
     }
+
+    /**
+     * @notice Check if user is compliant for vault deposit
+     * @param userTxId Transaction ID associated with user's compliance proofs
+     * @param amount Deposit amount (for yield threshold check)
+     * @return True if user has valid KYC and AML proofs
+     */
+    function isCompliantForDeposit(bytes32 userTxId, uint256 amount) external view returns (bool) {
+        AuditResult memory kycResult = auditResults[userTxId][AuditType.KYC];
+        AuditResult memory amlResult = auditResults[userTxId][AuditType.AML];
+        
+        // Check KYC and AML are valid and passed
+        // In production: add expiry check (e.g., valid for 90 days)
+        bool kycValid = kycResult.timestamp > 0 && kycResult.passed;
+        bool amlValid = amlResult.timestamp > 0 && amlResult.passed;
+        
+        return kycValid && amlValid;
+    }
+
+    /**
+     * @notice Check if vault operation is compliant for swap execution
+     * @param vaultTxId Transaction ID for the vault swap operation
+     * @return True if all compliance proofs exist and passed
+     */
+    function isCompliantForSwap(bytes32 vaultTxId) external view returns (bool) {
+        // For swaps, we require full compliance (KYC + AML + Yield)
+        return isFullyCompliant(vaultTxId);
+    }
+
+    /**
+     * @notice Get user's latest compliance status
+     * @param userTxId User's transaction ID
+     * @return kycPassed Whether KYC passed
+     * @return amlPassed Whether AML passed
+     * @return yieldPassed Whether Yield passed
+     * @return oldestTimestamp Oldest proof timestamp (for expiry checking)
+     */
+    function getUserComplianceStatus(bytes32 userTxId) 
+        external 
+        view 
+        returns (
+            bool kycPassed,
+            bool amlPassed,
+            bool yieldPassed,
+            uint256 oldestTimestamp
+        ) 
+    {
+        AuditResult memory kycResult = auditResults[userTxId][AuditType.KYC];
+        AuditResult memory amlResult = auditResults[userTxId][AuditType.AML];
+        AuditResult memory yieldResult = auditResults[userTxId][AuditType.YIELD];
+
+        kycPassed = kycResult.timestamp > 0 && kycResult.passed;
+        amlPassed = amlResult.timestamp > 0 && amlResult.passed;
+        yieldPassed = yieldResult.timestamp > 0 && yieldResult.passed;
+
+        // Find oldest timestamp for expiry checking
+        oldestTimestamp = kycResult.timestamp;
+        if (amlResult.timestamp > 0 && amlResult.timestamp < oldestTimestamp) {
+            oldestTimestamp = amlResult.timestamp;
+        }
+        if (yieldResult.timestamp > 0 && yieldResult.timestamp < oldestTimestamp) {
+            oldestTimestamp = yieldResult.timestamp;
+        }
+    }
 }

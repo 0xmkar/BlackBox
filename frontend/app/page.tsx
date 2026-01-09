@@ -68,9 +68,6 @@ export default function DashboardPage() {
               </p>
             </div>
             <div className="flex gap-3">
-              <Button variant="secondary" icon={<Wallet className="w-4 h-4" />}>
-                Connect Wallet
-              </Button>
               <Link href="/vault">
                 <Button variant="primary" icon={<Shield className="w-4 h-4" />}>
                   View Vault
