@@ -6,13 +6,11 @@ import { LayoutDashboard, FileText, Shield, Search, Settings, Vault, Coins } fro
 import * as Tooltip from '@radix-ui/react-tooltip';
 
 const MENU_ITEMS = [
-    { icon: LayoutDashboard, label: 'Dashboard', href: '/' },
+    { icon: LayoutDashboard, label: 'Dashboard', href: '/dashboard' },
     { icon: FileText, label: 'User Dashboard', href: '/user' },
     { icon: Vault, label: 'Curator Dashboard', href: '/curator' },
     { icon: Coins, label: 'Vault Deposits', href: '/deposit' },
-    { icon: Shield, label: 'Proofs', href: '/proofs' },
     { icon: Search, label: 'Auditor', href: '/auditor' },
-    { icon: Settings, label: 'Settings', href: '/settings' },
 ];
 
 export function Sidebar() {
