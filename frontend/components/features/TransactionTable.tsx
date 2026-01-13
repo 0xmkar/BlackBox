@@ -11,6 +11,8 @@ interface Transaction {
     protocol: string;
     timestamp: string;
     status: string;
+    type?: string;  // NEW: Deposit, Withdraw, Private Transfer, Private Swap
+    hasProofs?: boolean;  // NEW: true only for Private Transfer/Swap
     commitmentHash?: string;
     isVaultTx?: boolean;
     pacHash?: string;
@@ -62,7 +64,7 @@ export function TransactionTable({ transactions, loading = false, onSelectTx }: 
                             TX ID
                         </th>
                         <th className="text-left py-3 px-4 text-xs uppercase tracking-wider text-[#9BA4AE] font-medium">
-                            Protocol
+                            Type
                         </th>
                         <th className="text-left py-3 px-4 text-xs uppercase tracking-wider text-[#9BA4AE] font-medium">
                             Status
@@ -105,8 +107,17 @@ export function TransactionTable({ transactions, loading = false, onSelectTx }: 
                                     )}
                                 </div>
                             </td>
-                            <td className="py-4 px-4 text-sm text-[#E6EDF3]">
-                                {tx.protocol}
+                            <td className="py-4 px-4">
+                                {tx.type && (
+                                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${tx.type === 'Deposit' ? 'bg-emerald-500/10 text-emerald-400' :
+                                            tx.type === 'Withdraw' ? 'bg-rose-500/10 text-rose-400' :
+                                                tx.type === 'Private Transfer' ? 'bg-blue-500/10 text-blue-400' :
+                                                    tx.type === 'Private Swap' ? 'bg-purple-500/10 text-purple-400' :
+                                                        'bg-gray-500/10 text-gray-400'
+                                        }`}>
+                                        {tx.type}
+                                    </span>
+                                )}
                             </td>
                             <td className="py-4 px-4">
                                 <StatusPill status={tx.status} />
@@ -115,9 +126,20 @@ export function TransactionTable({ transactions, loading = false, onSelectTx }: 
                                 {tx.timestamp}
                             </td>
                             <td className="py-4 px-4">
-                                <button className="text-[#6ED6C9] hover:text-[#5AC2B5] text-sm font-medium flex items-center gap-1 transition-colors">
-                                    View <ExternalLink className="w-3 h-3" />
-                                </button>
+                                {tx.hasProofs ? (
+                                    <button className="text-[#6ED6C9] hover:text-[#5AC2B5] text-sm font-medium flex items-center gap-1 transition-colors">
+                                        View Proofs <ExternalLink className="w-3 h-3" />
+                                    </button>
+                                ) : (
+                                    <a
+                                        href={`https://sepolia.mantle.xyz/tx/${tx.id}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-[#9BA4AE] hover:text-[#6ED6C9] text-sm font-medium flex items-center gap-1 transition-colors"
+                                    >
+                                        Explorer <ExternalLink className="w-3 h-3" />
+                                    </a>
+                                )}
                             </td>
                         </motion.tr>
                     ))}

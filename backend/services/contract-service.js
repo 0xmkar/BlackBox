@@ -132,11 +132,37 @@ class ContractService {
             for (let i = 0; i < count; i++) {
                 const txId = await this.registryContract.getTransactionIdByIndex(i);
                 const tx = await this.registryContract.getTransaction(txId);
+
+                // Determine transaction type based on protocol field
+                let type = 'Unknown';
+                let hasProofs = false;
+
+                const protocol = tx.protocol.toLowerCase();
+                if (protocol.includes('deposit')) {
+                    type = 'Deposit';
+                    hasProofs = false;
+                } else if (protocol.includes('withdraw')) {
+                    type = 'Withdraw';
+                    hasProofs = false;
+                } else if (protocol.includes('swap')) {
+                    type = 'Private Swap';
+                    hasProofs = true;
+                } else if (protocol.includes('transfer') || protocol.includes('send')) {
+                    type = 'Private Transfer';
+                    hasProofs = true;
+                } else {
+                    // Default: if commitmentHash exists, assume it has proofs
+                    hasProofs = tx.commitmentHash && tx.commitmentHash !== '0x0000000000000000000000000000000000000000000000000000000000000000';
+                    type = hasProofs ? 'Private Transfer' : 'Transaction';
+                }
+
                 transactions.push({
                     txId: tx.txId,
                     commitmentHash: tx.commitmentHash,
                     timestamp: tx.timestamp,
                     protocol: tx.protocol,
+                    type: type,
+                    hasProofs: hasProofs,
                     exists: tx.exists
                 });
             }
