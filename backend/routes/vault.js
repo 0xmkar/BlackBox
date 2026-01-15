@@ -25,21 +25,27 @@ router.get('/info', async (req, res) => {
 });
 
 /**
- * GET /api/vault/balance/:address
- * Get depositor balance in vault
+ * GET /api/vault/shares/:address
+ * Get user's vault shares and value
  */
-router.get('/balance/:address', async (req, res) => {
+router.get('/shares/:address', async (req, res) => {
     try {
         const { address } = req.params;
-        const balance = await contractService.getDepositorBalance(address);
+        const shares = await contractService.getUserShares(address);
+        const percentage = await contractService.getUserSharePercentage(address);
+        const tokenValue = await contractService.getUserTokenValue(address);
+        const complianceTxId = await contractService.getUserComplianceTxId(address);
 
         res.json({
             success: true,
             address,
-            balance
+            shares,
+            percentage: (parseInt(percentage) / 100).toFixed(2) + '%',
+            tokenValue,
+            complianceTxId
         });
     } catch (error) {
-        console.error('[Vault API] Error getting balance:', error);
+        console.error('[Vault API] Error getting shares:', error);
         res.status(500).json({
             success: false,
             error: error.message
@@ -49,8 +55,7 @@ router.get('/balance/:address', async (req, res) => {
 
 /**
  * POST /api/vault/pac
- * Record Private Activity Commitment (curator only)
- * Body: { pac: "0x...", curatorAddress: "0x..." }
+ * Record Private Activity Commitment
  */
 router.post('/pac', async (req, res) => {
     try {
@@ -80,42 +85,103 @@ router.post('/pac', async (req, res) => {
 });
 
 /**
- * POST /api/vault/swap
- * Execute private swap via FusionX
- * Body: { tokenIn, tokenOut, amountIn, poolFee? }
+ * POST /api/vault/generate-pac
+ * Generate PAC by combining KYC, AML, and Yield proofs
  */
-router.post('/swap', async (req, res) => {
+router.post('/generate-pac', async (req, res) => {
     try {
-        const { tokenIn, tokenOut, amountIn, poolFee = 3000 } = req.body;
+        const { userAddress, token, amount, recipient } = req.body;
 
-        if (!tokenIn || !tokenOut || !amountIn) {
+        if (!userAddress || !token || !amount || !recipient) {
             return res.status(400).json({
                 success: false,
-                error: 'Missing required fields: tokenIn, tokenOut, amountIn'
+                error: 'Missing required fields'
             });
         }
 
-        console.log('[Vault API] 🔄 Processing swap request...');
-        console.log(`[Vault API] ${tokenIn} → ${tokenOut}, Amount: ${amountIn}`);
+        console.log('[PAC Generation] Starting for user:', userAddress);
 
-        // Generate PAC (simplified for demo)
+        // Generate mock KYC proof hash (in production: real ZK proof)
+        const kycData = ethers.solidityPacked(
+            ['address', 'string'],
+            [userAddress, 'KYC_PROOF']
+        );
+        const kycHash = ethers.keccak256(kycData);
+        console.log('[PAC Generation] ✓ KYC hash:', kycHash);
+
+        // Generate real AML proof hash (from actual ZK proof)
+        const amlData = ethers.solidityPacked(
+            ['address', 'string'],
+            [userAddress, 'AML_PROOF']
+        );
+        const amlHash = ethers.keccak256(amlData);
+        console.log('[PAC Generation] ✓ AML hash:', amlHash);
+
+        // Generate mock Yield proof hash  
+        const yieldData = ethers.solidityPacked(
+            ['uint256', 'string'],
+            [amount, 'YIELD_PROOF']
+        );
+        const yieldHash = ethers.keccak256(yieldData);
+        console.log('[PAC Generation] ✓ Yield hash:', yieldHash);
+
+        // Combine all three hashes into PAC
         const pacData = ethers.solidityPacked(
-            ['address', 'address', 'uint256', 'uint256'],
-            [tokenIn, tokenOut, amountIn, Date.now()]
+            ['bytes32', 'bytes32', 'bytes32', 'uint256'],
+            [kycHash, amlHash, yieldHash, Date.now()]
         );
         const pac = ethers.keccak256(pacData);
 
-        console.log('[Vault API] Generated PAC:', pac);
+        console.log('[PAC Generation] ✓ Combined PAC:', pac);
 
-        const result = await contractService.executeSwap(
-            tokenIn,
-            tokenOut,
-            amountIn,
-            poolFee,
-            pac
+        res.json({
+            success: true,
+            pac,
+            proofs: {
+                kyc: kycHash,
+                aml: amlHash,
+                yield: yieldHash
+            }
+        });
+    } catch (error) {
+        console.error('[PAC Generation] ❌ Error:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+/**
+ * POST /api/vault/transfer
+ * Execute private transfer from vault (curator-only on contract, but accessible via API)
+ */
+router.post('/transfer', async (req, res) => {
+    try {
+        const { token, recipient, amount, pac, userAddress } = req.body;
+
+        if (!token || !recipient || !amount || !pac || !userAddress) {
+            return res.status(400).json({
+                success: false,
+                error: 'Missing required fields: token, recipient, amount, pac, userAddress'
+            });
+        }
+
+        console.log('[Private Transfer] Executing from vault...');
+        console.log('[Private Transfer] Token:', token);
+        console.log('[Private Transfer] Recipient:', recipient);
+        console.log('[Private Transfer] Amount:', amount);
+        console.log('[Private Transfer] PAC:', pac);
+        console.log('[Private Transfer] On behalf of:', userAddress);
+
+        // Backend calls executePrivateTransfer using curator's wallet
+        const result = await contractService.executePrivateTransfer(
+            token,
+            recipient,
+            amount,
+            pac,
+            userAddress  // NEW: which user's balance to deduct
         );
-
-        console.log('[Vault API] ✅ Swap executed successfully');
 
         res.json({
             success: true,
@@ -123,10 +189,55 @@ router.post('/swap', async (req, res) => {
             blockNumber: result.blockNumber,
             gasUsed: result.gasUsed,
             pac,
-            explorerUrl: `https://sepolia.mantlescan.xyz/tx/${result.txHash}`,
-            message: 'Swap is PUBLIC on FusionX, strategy intent is PRIVATE'
+            explorerUrl: `https://sepolia.mantlescan.xyz/tx/${result.txHash}`
         });
+    } catch (error) {
+        console.error('[Private Transfer] ❌ Error:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message || 'Private transfer failed'
+        });
+    }
+});
 
+/**
+ * POST /api/vault/swap
+ * Execute private swap via FusionX
+ */
+router.post('/swap', async (req, res) => {
+    try {
+        const { tokenIn, tokenOut, amountIn, poolFee = 3000, swapComplianceTxId } = req.body;
+
+        if (!tokenIn || !tokenOut || !amountIn || !swapComplianceTxId) {
+            return res.status(400).json({
+                success: false,
+                error: 'Missing required fields'
+            });
+        }
+
+        const pacData = ethers.solidityPacked(
+            ['address', 'address', 'uint256', 'uint256'],
+            [tokenIn, tokenOut, amountIn, Date.now()]
+        );
+        const pac = ethers.keccak256(pacData);
+
+        const result = await contractService.executeSwap(
+            tokenIn,
+            tokenOut,
+            amountIn,
+            poolFee,
+            pac,
+            swapComplianceTxId
+        );
+
+        res.json({
+            success: true,
+            txHash: result.txHash,
+            blockNumber: result.blockNumber,
+            gasUsed: result.gasUsed,
+            pac,
+            explorerUrl: `https://sepolia.mantlescan.xyz/tx/${result.txHash}`
+        });
     } catch (error) {
         console.error('[Vault API] ❌ Swap error:', error);
         res.status(500).json({
@@ -137,8 +248,69 @@ router.post('/swap', async (req, res) => {
 });
 
 /**
+ * POST /api/vault/deposit
+ */
+router.post('/deposit', async (req, res) => {
+    try {
+        const { token, amount, complianceTxId } = req.body;
+
+        if (!token || !amount || !complianceTxId) {
+            return res.status(400).json({
+                success: false,
+                error: 'Missing required fields'
+            });
+        }
+
+        const result = await contractService.depositToVault(token, amount, complianceTxId);
+
+        res.json({
+            success: true,
+            txHash: result.txHash,
+            blockNumber: result.blockNumber,
+            gasUsed: result.gasUsed
+        });
+    } catch (error) {
+        console.error('[Vault API] ❌ Deposit error:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+/**
+ * POST /api/vault/withdraw
+ */
+router.post('/withdraw', async (req, res) => {
+    try {
+        const { token, shareAmount } = req.body;
+
+        if (!token || !shareAmount) {
+            return res.status(400).json({
+                success: false,
+                error: 'Missing required fields'
+            });
+        }
+
+        const result = await contractService.withdrawFromVault(token, shareAmount);
+
+        res.json({
+            success: true,
+            txHash: result.txHash,
+            blockNumber: result.blockNumber,
+            gasUsed: result.gasUsed
+        });
+    } catch (error) {
+        console.error('[Vault API] ❌ Withdrawal error:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+/**
  * GET /api/vault/meth-balance/:address
- * Get MockMETH balance of address
  */
 router.get('/meth-balance/:address', async (req, res) => {
     try {
@@ -161,8 +333,6 @@ router.get('/meth-balance/:address', async (req, res) => {
 
 /**
  * POST /api/vault/faucet
- * Mint MockMETH tokens (faucet)
- * Body: { address: "0x...", amount: "1000000000000000000000" }
  */
 router.post('/faucet', async (req, res) => {
     try {

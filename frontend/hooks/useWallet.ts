@@ -1,6 +1,7 @@
 'use client';
 
-import { useAccount, useSignTypedData } from 'wagmi';
+import { useAccount, useSignTypedData, useSwitchChain, useChainId } from 'wagmi';
+import { mantleSepolia } from '../config/chains';
 import {
     EIP712_DOMAIN,
     TRANSACTION_TYPES,
@@ -43,5 +44,27 @@ export function useProofSignature() {
 
 export function useWalletStatus() {
     const { address, isConnected } = useAccount();
-    return { address, isConnected };
+    const chainId = useChainId();
+    const { switchChain } = useSwitchChain();
+
+    const isCorrectNetwork = chainId === mantleSepolia.id;
+
+    const switchToMantleSepolia = async () => {
+        if (!isCorrectNetwork && switchChain) {
+            try {
+                await switchChain({ chainId: mantleSepolia.id });
+            } catch (error) {
+                console.error('Failed to switch network:', error);
+                throw error;
+            }
+        }
+    };
+
+    return {
+        address,
+        isConnected,
+        chainId,
+        isCorrectNetwork,
+        switchToMantleSepolia
+    };
 }

@@ -1,0 +1,170 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Tektur:wght@400;500;600;700;800;900&family=Orbitron:wght@400;500;600;700;800;900&display=swap');
+
+/* Futuristic Geometric Color Palette */
+:root {
+    --mantle-dark-bg: #000000;
+    --mantle-green-dark: #001a1a;
+    --mantle-green-medium: #052424;
+    --mantle-green-light: #0b3d3d;
+    --mantle-green-accent: #4eb3a6;
+    --mantle-green-bright: #5ac2b5;
+    --mantle-glass-bg: rgba(0, 26, 26, 0.3);
+    --mantle-glass-border: rgba(90, 194, 181, 0.3);
+    --mantle-glow-green: rgba(90, 194, 181, 0.6);
+    --mantle-text-primary: #ffffff;
+    --mantle-text-secondary: #5ac2b5;
+    --mantle-text-muted: #4a9d95;
+    --mantle-grid-color: rgba(90, 194, 181, 0.1);
+}
+
+/* Animated Background Gradient */
+@keyframes gradientShift {
+
+    0%,
+    100% {
+        opacity: 0.6;
+        transform: scale(1);
+    }
+
+    50% {
+        opacity: 0.8;
+        transform: scale(1.1);
+    }
+}
+
+/* Background Overlay with Grid */
+.mantle-bg-overlay {
+    background-image:
+        linear-gradient(var(--mantle-grid-color) 1px, transparent 1px),
+        linear-gradient(90deg, var(--mantle-grid-color) 1px, transparent 1px),
+        linear-gradient(45deg, transparent 48%, var(--mantle-grid-color) 48%, var(--mantle-grid-color) 52%, transparent 52%);
+    background-size: 50px 50px, 50px 50px, 100px 100px;
+}
+
+/* Logo Rotation Keyframes */
+@keyframes logoRotate {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(-360deg);
+    }
+}
+
+/* Logo SVG Styling - styling internal SVG paths */
+.mantle-logo-container svg {
+    width: 100%;
+    height: 100%;
+    filter: drop-shadow(0 0 20px var(--mantle-glow-green));
+}
+
+/* Animation Keyframes */
+@keyframes titleGlow {
+
+    0%,
+    100% {
+        text-shadow:
+            0 0 20px var(--mantle-glow-green),
+            0 0 40px var(--mantle-glow-green),
+            0 0 60px var(--mantle-glow-green),
+            0 0 80px var(--mantle-green-accent);
+    }
+
+    50% {
+        text-shadow:
+            0 0 30px var(--mantle-glow-green),
+            0 0 60px var(--mantle-glow-green),
+            0 0 90px var(--mantle-glow-green),
+            0 0 120px var(--mantle-green-accent);
+    }
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes iconFloat {
+
+    0%,
+    100% {
+        transform: translateY(0);
+    }
+
+    50% {
+        transform: translateY(-10px);
+    }
+}
+
+@keyframes shimmer {
+
+    0%,
+    100% {
+        opacity: 0.3;
+    }
+
+    50% {
+        opacity: 1;
+    }
+}
+
+/* Glitch Animation */
+@keyframes glitch {
+    0% {
+        transform: translate(0);
+    }
+
+    20% {
+        transform: translate(-2px, 2px);
+    }
+
+    40% {
+        transform: translate(-2px, -2px);
+    }
+
+    60% {
+        transform: translate(2px, 2px);
+    }
+
+    80% {
+        transform: translate(2px, -2px);
+    }
+
+    100% {
+        transform: translate(0);
+    }
+}
+
+/* Scanline Animation */
+@keyframes scanline {
+    0% {
+        transform: translateX(-100%);
+    }
+
+    100% {
+        transform: translateX(200%);
+    }
+}
+
+/* Height Glitch (Button Borders) */
+@keyframes heightGlitch {
+    0% {
+        height: 100%;
+    }
+
+    50% {
+        height: 50%;
+    }
+
+    100% {
+        height: 100%;
+    }
+}

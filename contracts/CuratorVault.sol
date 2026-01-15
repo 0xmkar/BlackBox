@@ -34,6 +34,8 @@ interface ISwapRouter {
  * KEY CONCEPT: Swaps are PUBLIC (visible on FusionX), but STRATEGY INTENT is PRIVATE
  * - Public: Individual swaps, token movements, AUM
  * - Private: Why we traded, portfolio context, next moves, compliance reasoning
+ *
+ * NEW: Supports native MNT deposits/withdrawals and private transfers
  */
 contract CuratorVault {
     using SafeERC20 for IERC20;
@@ -51,11 +53,14 @@ contract CuratorVault {
     /// @notice The vault instance
     VaultInfo public vault;
 
-    /// @notice Depositor balances
-    mapping(address => uint256) public deposits;
+    /// @notice Depositor balances (per token)
+    mapping(address => mapping(address => uint256)) public deposits; // user => token => amount
 
     /// @notice Token balances held by vault
     mapping(address => uint256) public tokenBalances;
+
+    /// @notice Native MNT balance tracking
+    uint256 public nativeBalance;
 
     /// @notice Contract owner
     address public owner;
@@ -66,6 +71,10 @@ contract CuratorVault {
     /// @notice FusionX V3 SwapRouter on Mantle Sepolia
     ISwapRouter public constant FUSIONX_ROUTER =
         ISwapRouter(0x8fC0B6585d73C94575555B3970D7A79c5bfc6E36);
+
+    /// @notice Native MNT token address marker
+    address public constant NATIVE_TOKEN =
+        address(0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE);
 
     /// @notice Emitted when vault is created
     event VaultCreated(
@@ -98,6 +107,15 @@ contract CuratorVault {
         uint256 newAUM
     );
 
+    /// @notice Emitted when private transfer is executed
+    event PrivateTransferExecuted(
+        address indexed token,
+        address indexed to,
+        uint256 amount,
+        bytes32 pac,
+        uint256 newAUM
+    );
+
     modifier onlyOwner() {
         require(msg.sender == owner, "Only owner");
         _;
@@ -123,6 +141,13 @@ contract CuratorVault {
     }
 
     /**
+     * @notice Receive native MNT
+     */
+    receive() external payable {
+        // Allow receiving MNT
+    }
+
+    /**
      * @notice Create vault (owner only)
      * @param _asset Primary asset address
      * @param _curator Curator address (can execute swaps, CANNOT withdraw)
@@ -145,43 +170,146 @@ contract CuratorVault {
     }
 
     /**
-     * @notice Deposit tokens into vault
-     * @param token Token address to deposit
-     * @param amount Amount to deposit
+     * @notice Deposit tokens into vault (supports ERC20 and native MNT)
+     * @param token Token address to deposit (use NATIVE_TOKEN for MNT)
+     * @param amount Amount to deposit (ignored for native MNT, uses msg.value)
      */
-    function depositToken(address token, uint256 amount) external vaultActive {
-        require(amount > 0, "Amount must be > 0");
+    function depositToken(
+        address token,
+        uint256 amount
+    ) external payable vaultActive {
+        if (token == NATIVE_TOKEN) {
+            // Depositing native MNT
+            require(msg.value > 0, "Must send MNT");
+            amount = msg.value;
 
-        // Transfer tokens from depositor to vault
-        IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
+            // Update balances
+            deposits[msg.sender][NATIVE_TOKEN] += amount;
+            nativeBalance += amount;
+            vault.totalAUM += amount;
 
-        // Update balances
-        deposits[msg.sender] += amount;
-        tokenBalances[token] += amount;
-        vault.totalAUM += amount;
+            emit TokenDeposited(msg.sender, NATIVE_TOKEN, amount);
+        } else {
+            // Depositing ERC20 token
+            require(amount > 0, "Amount must be > 0");
+            require(msg.value == 0, "Don't send MNT for ERC20 deposit");
 
-        emit TokenDeposited(msg.sender, token, amount);
+            // Transfer tokens from depositor to vault
+            IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
+
+            // Update balances
+            deposits[msg.sender][token] += amount;
+            tokenBalances[token] += amount;
+            vault.totalAUM += amount;
+
+            emit TokenDeposited(msg.sender, token, amount);
+        }
     }
 
     /**
      * @notice Withdraw tokens from vault (depositors only, NOT curator)
-     * @param token Token address to withdraw
+     * @param token Token address to withdraw (use NATIVE_TOKEN for MNT)
      * @param amount Amount to withdraw
      */
     function withdrawToken(address token, uint256 amount) external vaultActive {
         // CRITICAL: Curator CANNOT withdraw funds - enforced check
         require(msg.sender != vault.curator, "Curator cannot withdraw");
         require(amount > 0, "Amount must be > 0");
-        require(deposits[msg.sender] >= amount, "Insufficient balance");
-        // Update balances
-        deposits[msg.sender] -= amount;
-        tokenBalances[token] -= amount;
-        vault.totalAUM -= amount;
+        require(deposits[msg.sender][token] >= amount, "Insufficient balance");
 
-        // Transfer tokens back to depositor
-        IERC20(token).safeTransfer(msg.sender, amount);
+        if (token == NATIVE_TOKEN) {
+            // Withdrawing native MNT
+            deposits[msg.sender][NATIVE_TOKEN] -= amount;
+            nativeBalance -= amount;
+            vault.totalAUM -= amount;
 
-        emit TokenWithdrawn(msg.sender, token, amount);
+            // Transfer MNT back to depositor
+            (bool success, ) = payable(msg.sender).call{value: amount}("");
+            require(success, "MNT transfer failed");
+
+            emit TokenWithdrawn(msg.sender, NATIVE_TOKEN, amount);
+        } else {
+            // Withdrawing ERC20 token
+            deposits[msg.sender][token] -= amount;
+            tokenBalances[token] -= amount;
+            vault.totalAUM -= amount;
+
+            // Transfer tokens back to depositor
+            IERC20(token).safeTransfer(msg.sender, amount);
+
+            emit TokenWithdrawn(msg.sender, token, amount);
+        }
+    }
+
+    /**
+     * @notice Execute private transfer (send tokens from vault to recipient)
+     * @param token Token to send (use NATIVE_TOKEN for MNT)
+     * @param to Recipient address
+     * @param amount Amount to send
+     * @param pac Private Activity Commitment (compliance receipt)
+     *
+     * @dev THIS IS THE PRIVACY FEATURE: Transaction shows vault as sender, not user!
+     * @dev Generates PAC proof before sending to prove compliance
+     */
+    function executePrivateTransfer(
+        address token,
+        address to,
+        uint256 amount,
+        bytes32 pac,
+        address onBehalfOf // NEW: whose balance to use
+    ) external onlyCurator vaultActive returns (bytes32 txId) {
+        require(to != address(0), "Invalid recipient");
+        require(amount > 0, "Amount must be > 0");
+        require(pac != bytes32(0), "Invalid PAC");
+
+        if (token == NATIVE_TOKEN) {
+            // Sending native MNT
+            require(nativeBalance >= amount, "Insufficient vault balance");
+            require(
+                deposits[onBehalfOf][NATIVE_TOKEN] >= amount,
+                "Insufficient depositor balance"
+            );
+
+            // Update balances
+            nativeBalance -= amount;
+            deposits[onBehalfOf][NATIVE_TOKEN] -= amount; // Deduct from user's balance
+            vault.totalAUM -= amount;
+
+            // Transfer MNT from vault to recipient
+            (bool success, ) = payable(to).call{value: amount}("");
+            require(success, "MNT transfer failed");
+        } else {
+            // Sending ERC20 token
+            require(token != address(0), "Invalid token");
+            require(
+                tokenBalances[token] >= amount,
+                "Insufficient token balance"
+            );
+            require(
+                deposits[onBehalfOf][token] >= amount,
+                "Insufficient depositor balance"
+            );
+
+            // Update balances
+            tokenBalances[token] -= amount;
+            deposits[onBehalfOf][token] -= amount; // Deduct from user's balance
+            vault.totalAUM -= amount; // Simplified AUM tracking
+
+            // Transfer ERC20 from vault to recipient
+            IERC20(token).safeTransfer(to, amount);
+        }
+
+        // Store latest PAC
+        vault.latestPAC = pac;
+
+        // Register PAC with AuditRegistry (compliance receipt)
+        // This marks the transaction as coming from VAULT, hiding user identity
+        txId = keccak256(abi.encodePacked(pac, block.timestamp, to, amount));
+        auditRegistry.registerTx(txId, pac, address(this)); // origin = vault address!
+
+        emit PrivateTransferExecuted(token, to, amount, pac, vault.totalAUM);
+
+        return txId;
     }
 
     /**
@@ -248,8 +376,6 @@ contract CuratorVault {
         // Register PAC with AuditRegistry (compliance receipt)
         // PAC proves: trade was compliant, AUM change valid, curator authorized
         // WITHOUT revealing strategy intent
-        // NOTE: In production, PACs are derived from swapTxHash + AUM delta + proof hashes
-        // For demo: PAC is externally supplied but conceptually represents compliance receipt
         bytes32 txId = keccak256(
             abi.encodePacked(pac, block.timestamp, msg.sender)
         );
@@ -278,16 +404,20 @@ contract CuratorVault {
      * @notice Get token balance held by vault
      */
     function getTokenBalance(address token) external view returns (uint256) {
+        if (token == NATIVE_TOKEN) {
+            return nativeBalance;
+        }
         return tokenBalances[token];
     }
 
     /**
-     * @notice Get depositor balance
+     * @notice Get depositor balance for specific token
      */
     function getDepositorBalance(
-        address depositor
+        address depositor,
+        address token
     ) external view returns (uint256) {
-        return deposits[depositor];
+        return deposits[depositor][token];
     }
 
     /**
